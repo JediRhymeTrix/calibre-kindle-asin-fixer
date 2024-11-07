@@ -61,8 +61,7 @@ def extract_amazon_identifiers(root_dir='.', output_file='amazon_ids.txt'):
 
     with open(output_file, 'w') as f:
         for old_id, file_path in amazon_ids.items():
-            f.write(f'{old_id},"{file_path}"
-')
+            f.write(f'{old_id},"{file_path}"\n')
     
     print(f"ASINs extracted to {output_file}")
 
@@ -157,8 +156,7 @@ def update_amazon_ids(input_file):
             
             if new_asin:
                 mappings[old_asin] = new_asin
-                new_line = f'{old_asin},"{file_path}",{new_asin}
-'
+                new_line = f'{old_asin},"{file_path}",{new_asin}\n'
                 updated_lines.append(new_line)
                 print(f"Appending updated line: {new_line.strip()}")
                 print(f"Fetched new ASIN for {old_asin}: {new_asin}")
@@ -260,11 +258,9 @@ def remove_lines_and_trailing_commas(input_file):
             old_id, file_path_and_new_id = parts
             file_path, new_id = file_path_and_new_id.rsplit('"', 1)
             if not new_id:  # Keep the line if new_id is empty
-                remaining_lines.append(f'{old_id},"{file_path}"
-')
+                remaining_lines.append(f'{old_id},"{file_path}"\n')
         else:
-            remaining_lines.append(line.strip().rstrip(',') + '
-')
+            remaining_lines.append(line.strip().rstrip(',') + '\n')
 
     with open(input_file, 'w') as f:
         f.writelines(remaining_lines)

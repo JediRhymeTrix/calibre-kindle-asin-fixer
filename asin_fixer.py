@@ -1,17 +1,20 @@
-# ASIN Fixer for Kindle Colorsoft Cover Issues
+# Calibre ASIN Fixer for Kindle Colorsoft Cover Issues
 # Since the new Kindle Colorsoft only loads book covers from Amazon servers, having the correct Kindle ASIN is crucial for covers to display properly.
 # Calibre doesn’t always fetch the correct Kindle ASIN, which is the only way for the Kindle to download the cover.
 # This tool extracts ASINs from Calibre `.opf` files, scrapes Amazon for Kindle variants, and updates the `.opf` files with the correct Kindle ASIN.
+# Additionally, it reads from the Calibre database, updates book identifiers in the database based on the `.opf` files.
 #
 # How It Works:
 # 1. Extract ASINs: Pulls existing ASINs from `.opf` files in your Calibre library.
 # 2. Scrape Amazon: Uses Selenium to visit Amazon and scrape the correct Kindle ASIN.
 # 3. Update Metadata: Writes the Kindle ASIN back into the `.opf` files for accurate cover fetching.
+# 4. Update Database: Reads from the Calibre database to update the book identifiers in the `identifiers` table based on the `.opf` files.
 #
 # How to Run:
 # - Extract ASINs: `python asin_fixer.py extract <root_dir> <output_file>`
 # - Scrape Amazon for Kindle ASINs: `python asin_fixer.py scrape <input_file>`
 # - Update `.opf` files: `python asin_fixer.py update <mapping_file>`
+# - Update Database: `python asin_fixer.py update_db <db_file>`
 # - Clean temporary data: `python asin_fixer.py clean <input_file>`
 #
 # This tool ensures your Kindle properly displays book covers by updating metadata with the right Kindle ASIN.
@@ -19,6 +22,7 @@
 import os
 import time
 import xml.etree.ElementTree as ET
+import sqlite3
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -175,6 +179,37 @@ def update_opf_files(mapping_file):
             tree.write(file_path, encoding='utf-8', xml_declaration=True)
             print(f"Updated {file_path} with new AMAZON ID: {new_id}")
 
+def update_database_with_asins(db_file):
+    """
+    Update the Calibre database with ASINs from the .opf files.
+
+    Args:
+        db_file (str): Path to the Calibre database file.
+    """
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id, path FROM books")
+    books = cursor.fetchall()
+
+    for book_id, relative_path in books:
+        opf_path = os.path.join(os.path.dirname(db_file), relative_path, "metadata.opf")
+        if os.path.exists(opf_path):
+            try:
+                tree = ET.parse(opf_path)
+                root = tree.getroot()
+                amazon_identifier = root.find(".//dc:identifier[@opf:scheme='AMAZON']", {'dc': 'http://purl.org/dc/elements/1.1/', 'opf': 'http://www.idpf.org/2007/opf'})
+                if amazon_identifier is not None:
+                    new_asin = amazon_identifier.text
+                    cursor.execute("UPDATE identifiers SET val = ? WHERE book = ? AND type = 'amazon'", (new_asin, book_id))
+                    print(f"Updated database for book ID {book_id} with new ASIN: {new_asin}")
+            except ET.ParseError as e:
+                print(f"Failed to parse .opf file for book ID {book_id}: {e}")
+
+    conn.commit()
+    conn.close()
+
+
 def remove_lines_and_trailing_commas(input_file):
     """
     Remove lines with new ASINs and trailing commas from the input file.
@@ -213,6 +248,9 @@ if __name__ == "__main__":
     update_parser = subparsers.add_parser('update', help='Update .opf files with new ASINs')
     update_parser.add_argument('mapping_file', help='File containing the old and new AMAZON ID mappings')
 
+    update_db_parser = subparsers.add_parser('update_db', help='Update the Calibre database with ASINs from .opf files')
+    update_db_parser.add_argument('db_file', help='Path to the Calibre database file')
+
     clean_parser = subparsers.add_parser('clean', help='Remove lines with new ASINs and trailing commas')
     clean_parser.add_argument('input_file', help='File containing old and new AMAZON IDs and paths')
 
@@ -224,6 +262,8 @@ if __name__ == "__main__":
         update_amazon_ids(args.input_file)
     elif args.command == 'update':
         update_opf_files(args.mapping_file)
+    elif args.command == 'update_db':
+        update_database_with_asins(args.db_file)
     elif args.command == 'clean':
         remove_lines_and_trailing_commas(args.input_file)
     else:

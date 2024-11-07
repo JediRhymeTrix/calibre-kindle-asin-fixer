@@ -1,4 +1,5 @@
-# Calibre ASIN Fixer for Kindle Colorsoft Cover Issues
+# ASIN Fixer for Kindle Colorsoft Cover Issues
+#
 # Since the new Kindle Colorsoft only loads book covers from Amazon servers, having the correct Kindle ASIN is crucial for covers to display properly.
 # Calibre doesn’t always fetch the correct Kindle ASIN, which is the only way for the Kindle to download the cover.
 # This tool extracts ASINs from Calibre `.opf` files, scrapes Amazon for Kindle variants, and updates the `.opf` files with the correct Kindle ASIN.
@@ -33,6 +34,37 @@ from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import argparse
 import tempfile
+
+def extract_amazon_identifiers(root_dir='.', output_file='amazon_ids.txt'):
+    """
+    Extract ASINs from .opf files and save them to an output file.
+
+    Args:
+        root_dir (str): Root directory to start the search (default: current directory).
+        output_file (str): Output file for extracted ASINs (default: amazon_ids.txt).
+    """
+    ns = {
+        'dc': 'http://purl.org/dc/elements/1.1/',
+        'opf': 'http://www.idpf.org/2007/opf'
+    }
+    amazon_ids = {}
+
+    for subdir, _, files in os.walk(root_dir):
+        for file in files:
+            if file.endswith('.opf'):
+                file_path = os.path.join(subdir, file)
+                tree = ET.parse(file_path)
+                root = tree.getroot()
+                amazon_identifier = root.find(".//dc:identifier[@opf:scheme='AMAZON']", ns)
+                if amazon_identifier is not None:
+                    amazon_ids[amazon_identifier.text] = file_path
+
+    with open(output_file, 'w') as f:
+        for old_id, file_path in amazon_ids.items():
+            f.write(f'{old_id},"{file_path}"
+')
+    
+    print(f"ASINs extracted to {output_file}")
 
 def fetch_kindle_asin(driver, old_asin):
     """
@@ -125,7 +157,8 @@ def update_amazon_ids(input_file):
             
             if new_asin:
                 mappings[old_asin] = new_asin
-                new_line = f'{old_asin},"{file_path}",{new_asin}\n'
+                new_line = f'{old_asin},"{file_path}",{new_asin}
+'
                 updated_lines.append(new_line)
                 print(f"Appending updated line: {new_line.strip()}")
                 print(f"Fetched new ASIN for {old_asin}: {new_asin}")
@@ -227,9 +260,11 @@ def remove_lines_and_trailing_commas(input_file):
             old_id, file_path_and_new_id = parts
             file_path, new_id = file_path_and_new_id.rsplit('"', 1)
             if not new_id:  # Keep the line if new_id is empty
-                remaining_lines.append(f'{old_id},"{file_path}"\n')
+                remaining_lines.append(f'{old_id},"{file_path}"
+')
         else:
-            remaining_lines.append(line.strip().rstrip(',') + '\n')
+            remaining_lines.append(line.strip().rstrip(',') + '
+')
 
     with open(input_file, 'w') as f:
         f.writelines(remaining_lines)
